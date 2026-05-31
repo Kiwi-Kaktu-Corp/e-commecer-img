@@ -120,8 +120,11 @@ def get_common_styles() -> str:
 
         .card .info {
             padding: 1rem;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ddd;
             background: #fff;
+            position: relative;
+            z-index: 10;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
         }
 
         .card .title {
