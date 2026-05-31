@@ -12,41 +12,48 @@ https://kiwi-kaktu-corp.github.io/e-commecer-img/
 
 Exemplo de URL de imagem:
 ```
-https://kiwi-kaktu-corp.github.io/e-commecer-img/vinho/pack-01/uva-01.webp
+https://kiwi-kaktu-corp.github.io/e-commecer-img/assets/vinho/pack-01/uva-01.webp
 ```
 
 ## Catálogo Visual
 
 Acesse o catálogo interativo em:
 ```
-https://kiwi-kaktu-corp.github.io/e-commecer-img/index.html
+https://kiwi-kaktu-corp.github.io/e-commecer-img/
 ```
 
-O catálogo permite visualizar todas as imagens e copiar URLs com um clique.
+### Navegação Hierárquica
+
+1. **Página inicial** → Lista de categorias (ex: vinho) com preview
+2. **Categoria** → Lista de packs com miniaturas
+3. **Pack** → Todas as imagens com botão "Copiar URL"
 
 ## Estrutura de Pastas
 
 ```
 e-commecer-img/
-├── vinho/
-│   └── pack-01/
-│       ├── *.png    # Originais
-│       └── *.webp   # Otimizados (gerados automaticamente)
+├── assets/
+│   └── vinho/
+│       ├── index.html         # Lista de packs
+│       └── pack-01/
+│           ├── index.html     # Imagens do pack
+│           ├── *.png          # Originais
+│           └── *.webp         # Otimizados
 ├── tools/
-│   ├── optimize.py       # Converte PNG/JPG → WebP
-│   └── generate_index.py # Gera catálogo HTML
-├── index.html            # Catálogo visual
-└── requirements.txt      # Dependências Python
+│   ├── optimize.py            # Converte PNG/JPG → WebP
+│   └── generate_index.py      # Gera catálogos HTML
+├── index.html                 # Página inicial (categorias)
+└── requirements.txt           # Dependências Python
 ```
 
 ## Como Adicionar Novas Imagens
 
-1. Crie uma pasta para a categoria (ex: `vinho/pack-02/`)
+1. Crie uma pasta para a categoria e pack (ex: `assets/vinho/pack-02/`)
 2. Adicione as imagens PNG ou JPG na pasta
 3. Faça commit e push para a branch `main`
 4. O GitHub Actions irá automaticamente:
    - Converter as imagens para WebP
-   - Atualizar o catálogo `index.html`
+   - Gerar os arquivos `index.html` em cada nível
    - Fazer deploy no GitHub Pages
 
 ## Rodar Localmente

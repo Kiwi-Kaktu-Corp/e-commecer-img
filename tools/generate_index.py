@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Generate index.html catalog from available images.
-Scans the repository for WebP/PNG images and creates a visual catalog.
+Generate hierarchical HTML catalog from available images.
+Creates index.html files at each level: root → category → pack
 """
 
 import sys
@@ -10,226 +10,172 @@ from collections import defaultdict
 
 # Repository configuration
 BASE_URL = "https://kiwi-kaktu-corp.github.io/e-commecer-img/"
-REPO_NAME = "e-commecer-img"
+ASSETS_DIR = "assets"
 
 
-def find_images(root_dir: Path) -> dict[str, list[Path]]:
-    """
-    Find all images grouped by directory.
-
-    Args:
-        root_dir: Root directory to scan
-
-    Returns:
-        Dictionary mapping directory paths to list of image files
-    """
-    images = defaultdict(list)
-
-    # Find all WebP and PNG files
-    for ext in ("*.webp", "*.png", "*.jpg", "*.jpeg"):
-        for img_path in root_dir.rglob(ext):
-            # Skip hidden directories, tools, and .github
-            parts = img_path.relative_to(root_dir).parts
-            if any(part.startswith(".") or part in ("tools", "node_modules") for part in parts):
-                continue
-
-            rel_dir = str(img_path.parent.relative_to(root_dir))
-            images[rel_dir].append(img_path)
-
-    # Sort images within each directory and deduplicate (prefer WebP over PNG)
-    result = {}
-    for dir_path, img_list in images.items():
-        # Group by base name
-        by_name = defaultdict(list)
-        for img in img_list:
-            by_name[img.stem].append(img)
-
-        # Prefer WebP, fallback to PNG/JPG
-        unique_images = []
-        for stem, variants in by_name.items():
-            webp = [v for v in variants if v.suffix.lower() == ".webp"]
-            if webp:
-                unique_images.append(webp[0])
-            else:
-                unique_images.append(variants[0])
-
-        result[dir_path] = sorted(unique_images, key=lambda p: p.stem)
-
-    return result
-
-
-def generate_image_card(img_path: Path, root_dir: Path) -> str:
-    """Generate HTML for a single image card."""
-    rel_path = img_path.relative_to(root_dir)
-    filename = img_path.name
-    dir_path = str(rel_path.parent) + "/"
-    alt_name = img_path.stem
-
-    # Use WebP extension for display, with fallback
-    webp_path = rel_path.with_suffix(".webp")
-    png_path = rel_path.with_suffix(".png")
-
-    return f"""                <div class="image-card">
-                    <img src="{webp_path}" alt="{alt_name}" loading="lazy" onerror="this.src=this.src.replace('.webp','.png')">
-                    <div class="info">
-                        <div class="filename">{webp_path.name}</div>
-                        <div class="path">{dir_path}</div>
-                        <button class="copy-btn" onclick="copyUrl(this, '{webp_path}')">Copiar URL</button>
-                    </div>
-                </div>"""
-
-
-def generate_nav_links(categories: list[str]) -> str:
-    """Generate navigation links."""
-    links = []
-    for cat in categories:
-        cat_id = cat.replace("/", "-")
-        links.append(f'        <a href="#{cat_id}">{cat}</a>')
-    return "\n".join(links)
-
-
-def generate_category_section(category: str, images: list[Path], root_dir: Path) -> str:
-    """Generate HTML for a category section."""
-    cat_id = category.replace("/", "-")
-    cat_display = category.replace("/", " / ")
-
-    cards = "\n".join(generate_image_card(img, root_dir) for img in images)
-
-    return f"""        <section class="category" id="{cat_id}">
-            <h2>{cat_display}</h2>
-            <div class="image-grid">
-{cards}
-            </div>
-        </section>"""
-
-
-def generate_html(images_by_dir: dict[str, list[Path]], root_dir: Path) -> str:
-    """Generate complete HTML catalog."""
-    categories = sorted(images_by_dir.keys())
-    nav_links = generate_nav_links(categories)
-    sections = "\n\n".join(
-        generate_category_section(cat, images_by_dir[cat], root_dir)
-        for cat in categories
-    )
-
-    return f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Catálogo de Imagens - Kiwi Kaktu Corp</title>
-    <style>
-        * {{
+def get_common_styles() -> str:
+    """Return common CSS styles."""
+    return """
+        * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-        }}
+        }
 
-        body {{
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
             background: #f5f5f5;
             color: #333;
             line-height: 1.6;
-        }}
+        }
 
-        header {{
+        header {
             background: linear-gradient(135deg, #2c3e50, #3498db);
             color: white;
             padding: 2rem;
             text-align: center;
-        }}
+        }
 
-        header h1 {{
+        header h1 {
             font-size: 2rem;
             margin-bottom: 0.5rem;
-        }}
+        }
 
-        header p {{
+        header p {
             opacity: 0.9;
-        }}
+        }
 
-        nav {{
+        .breadcrumb {
             background: #fff;
             padding: 1rem 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             position: sticky;
             top: 0;
             z-index: 100;
-        }}
+        }
 
-        nav a {{
+        .breadcrumb a {
             color: #3498db;
             text-decoration: none;
-            margin-right: 1rem;
-        }}
+        }
 
-        nav a:hover {{
+        .breadcrumb a:hover {
             text-decoration: underline;
-        }}
+        }
 
-        main {{
+        .breadcrumb span {
+            color: #888;
+            margin: 0 0.5rem;
+        }
+
+        .breadcrumb .current {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        main {
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
-        }}
+        }
 
-        .category {{
-            margin-bottom: 3rem;
-        }}
-
-        .category h2 {{
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 0.5rem;
-            margin-bottom: 1.5rem;
-        }}
-
-        .image-grid {{
+        .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 1.5rem;
-        }}
+        }
 
-        .image-card {{
+        .card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+
+        .card .preview {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 4px;
+            padding: 8px;
+            background: #fafafa;
+            height: 180px;
+        }
+
+        .card .preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .card .info {
+            padding: 1rem;
+            border-top: 1px solid #eee;
+        }
+
+        .card .title {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+
+        .card .count {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Image detail cards */
+        .image-card {
             background: white;
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
-        }}
+        }
 
-        .image-card:hover {{
+        .image-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-        }}
+        }
 
-        .image-card img {{
+        .image-card img {
             width: 100%;
             height: 200px;
             object-fit: contain;
             background: #fafafa;
             padding: 1rem;
-        }}
+        }
 
-        .image-card .info {{
+        .image-card .info {
             padding: 1rem;
             border-top: 1px solid #eee;
-        }}
+        }
 
-        .image-card .filename {{
+        .image-card .filename {
             font-weight: 600;
             color: #2c3e50;
             font-size: 0.9rem;
             word-break: break-all;
-        }}
+        }
 
-        .image-card .path {{
+        .image-card .path {
             color: #888;
             font-size: 0.75rem;
             margin-top: 0.25rem;
-        }}
+        }
 
-        .copy-btn {{
+        .copy-btn {
             display: block;
             width: 100%;
             margin-top: 0.75rem;
@@ -241,17 +187,17 @@ def generate_html(images_by_dir: dict[str, list[Path]], root_dir: Path) -> str:
             cursor: pointer;
             font-size: 0.85rem;
             transition: background 0.2s;
-        }}
+        }
 
-        .copy-btn:hover {{
+        .copy-btn:hover {
             background: #2980b9;
-        }}
+        }
 
-        .copy-btn.copied {{
+        .copy-btn.copied {
             background: #27ae60;
-        }}
+        }
 
-        .toast {{
+        .toast {
             position: fixed;
             bottom: 2rem;
             left: 50%;
@@ -264,61 +210,48 @@ def generate_html(images_by_dir: dict[str, list[Path]], root_dir: Path) -> str:
             opacity: 0;
             transition: transform 0.3s, opacity 0.3s;
             z-index: 1000;
-        }}
+        }
 
-        .toast.show {{
+        .toast.show {
             transform: translateX(-50%) translateY(0);
             opacity: 1;
-        }}
+        }
 
-        footer {{
+        footer {
             text-align: center;
             padding: 2rem;
             color: #888;
             font-size: 0.9rem;
-        }}
+        }
 
-        @media (max-width: 600px) {{
-            header h1 {{
+        @media (max-width: 600px) {
+            header h1 {
                 font-size: 1.5rem;
-            }}
+            }
 
-            main {{
+            main {
                 padding: 1rem;
-            }}
+            }
 
-            .image-grid {{
+            .grid {
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                 gap: 1rem;
-            }}
+            }
 
-            .image-card img {{
+            .card .preview {
+                height: 120px;
+            }
+
+            .image-card img {
                 height: 150px;
-            }}
-        }}
-    </style>
-</head>
-<body>
-    <header>
-        <h1>Catálogo de Imagens</h1>
-        <p>Kiwi Kaktu Corp - CDN de Imagens para E-commerce</p>
-    </header>
+            }
+        }
+"""
 
-    <nav>
-{nav_links}
-    </nav>
 
-    <main>
-{sections}
-    </main>
-
-    <footer>
-        <p>Kiwi Kaktu Corp &copy; 2024</p>
-    </footer>
-
-    <div class="toast" id="toast">URL copiada!</div>
-
-    <script>
+def get_copy_script() -> str:
+    """Return JavaScript for copy functionality."""
+    return f"""
         const BASE_URL = '{BASE_URL}';
 
         function copyUrl(btn, path) {{
@@ -353,28 +286,288 @@ def generate_html(images_by_dir: dict[str, list[Path]], root_dir: Path) -> str:
                 }}, 2000);
             }});
         }}
-    </script>
+"""
+
+
+def find_structure(root_dir: Path) -> dict:
+    """
+    Find all images and organize by category/pack structure.
+
+    Returns:
+        {
+            'vinho': {
+                'pack-01': [Path, Path, ...],
+                'pack-02': [Path, Path, ...],
+            }
+        }
+    """
+    assets_dir = root_dir / ASSETS_DIR
+    if not assets_dir.exists():
+        return {}
+
+    structure = defaultdict(lambda: defaultdict(list))
+
+    for ext in ("*.webp", "*.png", "*.jpg", "*.jpeg"):
+        for img_path in assets_dir.rglob(ext):
+            rel_path = img_path.relative_to(assets_dir)
+            parts = rel_path.parts
+
+            if len(parts) >= 2:
+                category = parts[0]  # e.g., 'vinho'
+                pack = parts[1]      # e.g., 'pack-01'
+                structure[category][pack].append(img_path)
+
+    # Deduplicate (prefer WebP)
+    result = {}
+    for category, packs in structure.items():
+        result[category] = {}
+        for pack, images in packs.items():
+            by_name = defaultdict(list)
+            for img in images:
+                by_name[img.stem].append(img)
+
+            unique = []
+            for stem, variants in by_name.items():
+                webp = [v for v in variants if v.suffix.lower() == ".webp"]
+                unique.append(webp[0] if webp else variants[0])
+
+            result[category][pack] = sorted(unique, key=lambda p: p.stem)
+
+    return result
+
+
+def get_preview_images(images: list[Path], count: int = 4) -> list[Path]:
+    """Get first N images for preview."""
+    return images[:count]
+
+
+def generate_root_index(structure: dict, root_dir: Path) -> str:
+    """Generate root index.html showing categories."""
+    cards = []
+
+    for category in sorted(structure.keys()):
+        packs = structure[category]
+        total_images = sum(len(imgs) for imgs in packs.values())
+
+        # Get preview images from first pack
+        first_pack = sorted(packs.keys())[0]
+        preview_imgs = get_preview_images(packs[first_pack])
+
+        previews_html = ""
+        for img in preview_imgs:
+            rel_path = img.relative_to(root_dir)
+            previews_html += f'<img src="{rel_path}" alt="" loading="lazy">'
+
+        # Fill empty slots
+        for _ in range(4 - len(preview_imgs)):
+            previews_html += '<div style="background:#eee;border-radius:4px;"></div>'
+
+        cards.append(f"""
+            <a href="{ASSETS_DIR}/{category}/index.html" class="card">
+                <div class="preview">
+                    {previews_html}
+                </div>
+                <div class="info">
+                    <div class="title">{category}</div>
+                    <div class="count">{len(packs)} pack(s) · {total_images} imagens</div>
+                </div>
+            </a>
+        """)
+
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Imagens - Kiwi Kaktu Corp</title>
+    <style>{get_common_styles()}</style>
+</head>
+<body>
+    <header>
+        <h1>Catálogo de Imagens</h1>
+        <p>Kiwi Kaktu Corp - CDN de Imagens para E-commerce</p>
+    </header>
+
+    <div class="breadcrumb">
+        <span class="current">Início</span>
+    </div>
+
+    <main>
+        <div class="grid">
+            {"".join(cards)}
+        </div>
+    </main>
+
+    <footer>
+        <p>Kiwi Kaktu Corp &copy; 2024</p>
+    </footer>
+</body>
+</html>"""
+
+
+def generate_category_index(category: str, packs: dict, root_dir: Path) -> str:
+    """Generate category index.html showing packs."""
+    cards = []
+
+    for pack in sorted(packs.keys()):
+        images = packs[pack]
+        preview_imgs = get_preview_images(images)
+
+        previews_html = ""
+        for img in preview_imgs:
+            rel_path = img.relative_to(root_dir / ASSETS_DIR / category)
+            previews_html += f'<img src="{rel_path}" alt="" loading="lazy">'
+
+        for _ in range(4 - len(preview_imgs)):
+            previews_html += '<div style="background:#eee;border-radius:4px;"></div>'
+
+        cards.append(f"""
+            <a href="{pack}/index.html" class="card">
+                <div class="preview">
+                    {previews_html}
+                </div>
+                <div class="info">
+                    <div class="title">{pack}</div>
+                    <div class="count">{len(images)} imagens</div>
+                </div>
+            </a>
+        """)
+
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{category} - Catálogo de Imagens</title>
+    <style>{get_common_styles()}</style>
+</head>
+<body>
+    <header>
+        <h1>{category}</h1>
+        <p>Selecione um pack para ver as imagens</p>
+    </header>
+
+    <div class="breadcrumb">
+        <a href="../../index.html">Início</a>
+        <span>›</span>
+        <span class="current">{category}</span>
+    </div>
+
+    <main>
+        <div class="grid">
+            {"".join(cards)}
+        </div>
+    </main>
+
+    <footer>
+        <p>Kiwi Kaktu Corp &copy; 2024</p>
+    </footer>
+</body>
+</html>"""
+
+
+def generate_pack_index(category: str, pack: str, images: list[Path], root_dir: Path) -> str:
+    """Generate pack index.html showing all images with copy buttons."""
+    cards = []
+
+    for img in images:
+        full_rel_path = f"{ASSETS_DIR}/{category}/{pack}/{img.name}"
+        webp_name = img.stem + ".webp"
+
+        cards.append(f"""
+            <div class="image-card">
+                <img src="{img.name}" alt="{img.stem}" loading="lazy" onerror="this.src=this.src.replace('.webp','.png')">
+                <div class="info">
+                    <div class="filename">{webp_name}</div>
+                    <div class="path">{ASSETS_DIR}/{category}/{pack}/</div>
+                    <button class="copy-btn" onclick="copyUrl(this, '{ASSETS_DIR}/{category}/{pack}/{webp_name}')">Copiar URL</button>
+                </div>
+            </div>
+        """)
+
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{pack} - {category} - Catálogo de Imagens</title>
+    <style>{get_common_styles()}</style>
+</head>
+<body>
+    <header>
+        <h1>{pack}</h1>
+        <p>{len(images)} imagens disponíveis</p>
+    </header>
+
+    <div class="breadcrumb">
+        <a href="../../../index.html">Início</a>
+        <span>›</span>
+        <a href="../index.html">{category}</a>
+        <span>›</span>
+        <span class="current">{pack}</span>
+    </div>
+
+    <main>
+        <div class="grid">
+            {"".join(cards)}
+        </div>
+    </main>
+
+    <footer>
+        <p>Kiwi Kaktu Corp &copy; 2024</p>
+    </footer>
+
+    <div class="toast" id="toast">URL copiada!</div>
+
+    <script>{get_copy_script()}</script>
 </body>
 </html>"""
 
 
 def main():
     root_dir = Path(__file__).parent.parent.resolve()
-    output_path = root_dir / "index.html"
 
-    print(f"Scanning for images in: {root_dir}")
-    images_by_dir = find_images(root_dir)
+    print(f"Scanning for images in: {root_dir / ASSETS_DIR}")
+    structure = find_structure(root_dir)
 
-    total_images = sum(len(imgs) for imgs in images_by_dir.values())
-    print(f"Found {total_images} images in {len(images_by_dir)} categories")
+    if not structure:
+        print("No images found in assets/ directory")
+        return 1
 
-    for cat, imgs in sorted(images_by_dir.items()):
-        print(f"  {cat}: {len(imgs)} images")
+    # Count totals
+    total_categories = len(structure)
+    total_packs = sum(len(packs) for packs in structure.values())
+    total_images = sum(
+        len(imgs) for packs in structure.values() for imgs in packs.values()
+    )
 
-    html = generate_html(images_by_dir, root_dir)
+    print(f"Found {total_images} images in {total_packs} packs across {total_categories} categories")
 
-    output_path.write_text(html, encoding="utf-8")
-    print(f"\nGenerated: {output_path}")
+    for cat, packs in sorted(structure.items()):
+        print(f"  {cat}/")
+        for pack, imgs in sorted(packs.items()):
+            print(f"    {pack}/: {len(imgs)} images")
+
+    # Generate root index
+    root_index = root_dir / "index.html"
+    root_index.write_text(generate_root_index(structure, root_dir), encoding="utf-8")
+    print(f"\nGenerated: {root_index}")
+
+    # Generate category and pack indexes
+    for category, packs in structure.items():
+        cat_dir = root_dir / ASSETS_DIR / category
+
+        # Category index
+        cat_index = cat_dir / "index.html"
+        cat_index.write_text(generate_category_index(category, packs, root_dir), encoding="utf-8")
+        print(f"Generated: {cat_index}")
+
+        # Pack indexes
+        for pack, images in packs.items():
+            pack_dir = cat_dir / pack
+            pack_index = pack_dir / "index.html"
+            pack_index.write_text(generate_pack_index(category, pack, images, root_dir), encoding="utf-8")
+            print(f"Generated: {pack_index}")
 
     return 0
 
