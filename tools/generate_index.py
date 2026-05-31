@@ -121,6 +121,7 @@ def get_common_styles() -> str:
         .card .info {
             padding: 1rem;
             border-top: 1px solid #eee;
+            background: #fff;
         }
 
         .card .title {
@@ -220,8 +221,11 @@ def get_common_styles() -> str:
         footer {
             text-align: center;
             padding: 2rem;
-            color: #888;
+            color: #666;
             font-size: 0.9rem;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+            margin-top: 2rem;
         }
 
         @media (max-width: 600px) {
